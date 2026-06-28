@@ -1,240 +1,148 @@
-# 🎯 PPG Tracker - Panduan Setup Lengkap
+# 🎯 PPG Tracker v2 — Pengumuman Calon Guru
 
-Aplikasi untuk otomatis tracking jadwal pembukaan PPG dan kirim notifikasi email.
+Bot otomatis yang memantau halaman berita PPG Kemendikdasmen, **hanya**
+fokus ke pengumuman yang judulnya cocok dengan kata kunci tertentu
+(default: **"calon guru"** + **"2026"**), lalu mengirim email berisi:
 
----
+- Judul & tanggal pengumuman
+- Teks lengkap isi PDF pengumuman (sudah diekstrak otomatis)
+- Link artikel asli & link PDF asli
+- **File PDF asli dilampirkan langsung** di email
 
-## 📋 Apa yang Dilakukan
-
-✅ Scrape website PPG setiap hari 2x (pagi jam 7:00 & malam jam 19:00)  
-✅ Deteksi perubahan informasi jadwal pembukaan  
-✅ Kirim email notifikasi otomatis jika ada perubahan  
-✅ Simpan histori perubahan di file `ppg_cache.json`  
-
----
-
-## 🚀 Step-by-Step Setup
-
-### **STEP 1: Persiapan GitHub Repository**
-
-1. Buat repository baru di GitHub (atau gunakan yang sudah ada)
-2. Clone ke komputer lokal:
-   ```bash
-   git clone https://github.com/USERNAME/ppg-tracker.git
-   cd ppg-tracker
-   ```
-
-3. Copy file-file yang sudah dibuat:
-   - `ppg_tracker.py`
-   - `requirements.txt`
-   - `.github/workflows/ppg-tracker.yml` (buat folder `.github/workflows/` terlebih dahulu)
-
-4. Push ke GitHub:
-   ```bash
-   git add .
-   git commit -m "Initial commit: PPG Tracker setup"
-   git push origin main
-   ```
+Email hanya terkirim kalau ada pengumuman **baru** atau **PDF yang sudah
+ada isinya berubah** — bukan setiap kali script jalan.
 
 ---
 
-### **STEP 2: Setup Gmail (Email Sender)**
+## 📁 Struktur File
 
-Gmail tidak memperbolehkan password biasa untuk aplikasi pihak ketiga. Kita perlu **App Password**:
-
-1. **Enable 2-Step Verification di akun Google:**
-   - Ke https://myaccount.google.com/
-   - Pilih "Security" di sidebar kiri
-   - Scroll ke "How you sign in to Google"
-   - Klik "2-Step Verification" dan ikuti langkahnya
-
-2. **Generate App Password:**
-   - Setelah 2-Step Verification aktif, balik ke Security page
-   - Cari "App passwords" (di bawah 2-Step Verification)
-   - Pilih "Mail" dan "Windows Computer" (atau sesuai device mu)
-   - Google akan generate password unik (16 karakter)
-   - **Copy password ini!** (kita butuh di step selanjutnya)
-
----
-
-### **STEP 3: Setup GitHub Secrets**
-
-GitHub Secrets adalah tempat aman untuk menyimpan password/API key.
-
-1. Buka repository di GitHub
-2. Klik **Settings** → **Secrets and variables** → **Actions**
-3. Klik tombol **"New repository secret"**
-4. Buat 3 secrets berikut:
-
-   | Secret Name | Nilai |
-   |-------------|-------|
-   | `EMAIL_SENDER` | Email Gmail mu (contoh: `namaku@gmail.com`) |
-   | `EMAIL_PASSWORD` | App Password dari step sebelumnya (16 karakter) |
-   | `EMAIL_RECIPIENT` | Email tujuan (bisa sama dengan EMAIL_SENDER atau email lain) |
-
-   Contoh:
-   ```
-   EMAIL_SENDER = my.account@gmail.com
-   EMAIL_PASSWORD = abcd efgh ijkl mnop  (16 char App Password)
-   EMAIL_RECIPIENT = my.account@gmail.com
-   ```
-
----
-
-### **STEP 4: Update Website URL**
-
-Sesuaikan URL website PPG yang ingin di-track:
-
-1. Buka file `ppg_tracker.py`
-2. Cari baris ini (biasanya di awal):
-   ```python
-   PPG_WEBSITE_URL = "https://www.ppg.kemdikbud.go.id/"
-   ```
-3. Ganti dengan URL yang benar dari situs PPG resmi
-
----
-
-### **STEP 5: Customize CSS Selectors (PENTING!)**
-
-Ini adalah langkah paling krusial! Kita perlu tahu struktur HTML website PPG untuk scrape dengan benar.
-
-**Cara mencari selector CSS:**
-
-1. Buka website PPG di browser
-2. Tekan **F12** untuk buka DevTools
-3. Klik tombol **"Inspect Element"** (atau tekan Ctrl+Shift+C)
-4. Klik elemen yang berisi jadwal/pengumuman
-5. Di DevTools, lihat struktur HTML-nya
-6. Catat nama class atau ID-nya
-
-Contoh yang mungkin ketemu:
-- `<div class="jadwal-ppg">Jadwal Pembukaan...</div>` → selector: `.jadwal-ppg`
-- `<h2 id="pengumuman">Pengumuman PPG</h2>` → selector: `#pengumuman`
-
-Setelah ketemu selector, buka `ppg_tracker.py` dan update bagian ini:
-
-```python
-selectors_to_try = [
-    "div.jadwal-ppg",        # ← Ganti ini dengan selector yang benar
-    "div.pengumuman", 
-    ".announcement",
-    # ... dst
-]
+```
+ppg-tracker/
+├── ppg_tracker.py                    # Script utama (jangan perlu diedit kecuali nambah fitur)
+├── config.py                         # ⭐ Semua setting yang BOLEH diubah ada di sini
+├── requirements.txt                  # Dependency Python
+├── ppg_cache.json                    # Auto-generated, jangan diedit manual
+├── pdf_downloads/                    # Auto-generated, PDF disimpan sementara di sini
+└── .github/workflows/ppg-tracker.yml # Jadwal otomatis (GitHub Actions)
 ```
 
 ---
 
-## ✅ Testing Lokal (Opsional)
+## ⚙️ Cara Ganti Keyword Filter (paling sering dibutuhkan)
 
-Kalau pengin test script-nya lokal sebelum deploy:
+Buka `config.py`, cari bagian ini:
+
+```python
+KEYWORDS_WAJIB_ADA = ["calon guru", "2026"]
+MODE_FILTER = "all"   # "all" = semua keyword wajib ada, "any" = salah satu cukup
+```
+
+Contoh kalau mau ganti jadi pantau "Guru Tertentu 2026" juga:
+
+```python
+KEYWORDS_WAJIB_ADA = ["guru tertentu", "2026"]
+```
+
+Tidak perlu sentuh `ppg_tracker.py` sama sekali untuk ini.
+
+---
+
+## 🚀 Setup dari Awal
+
+### 1. Setup Gmail App Password
+1. Aktifkan 2-Step Verification di https://myaccount.google.com/security
+2. Buat **App Password** (16 karakter) khusus untuk "Mail"
+3. Simpan password ini, dipakai di step 3
+
+### 2. Push project ini ke GitHub
+```bash
+git init
+git add .
+git commit -m "Setup PPG Tracker v2"
+git remote add origin https://github.com/USERNAME/ppg-tracker.git
+git push -u origin main
+```
+
+### 3. Setup GitHub Secrets
+Di repo GitHub → **Settings → Secrets and variables → Actions** → New repository secret:
+
+| Secret Name | Isi |
+|---|---|
+| `EMAIL_SENDER` | Email Gmail pengirim |
+| `EMAIL_PASSWORD` | App Password 16 karakter (bukan password Gmail biasa) |
+| `EMAIL_RECIPIENT` | Email tujuan notifikasi |
+
+### 4. Selesai
+Workflow otomatis jalan jam **07:00 & 19:00 WIB** setiap hari.
+Untuk test manual tanpa menunggu jadwal: tab **Actions** → pilih workflow
+**"PPG Tracker - Cek Pengumuman Calon Guru"** → **Run workflow**.
+
+---
+
+## 🧪 Test Lokal (opsional)
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+pip install -r requirements.txt --break-system-packages
+playwright install --with-deps chromium
 
-# Set environment variables (di terminal)
-export EMAIL_SENDER="your_email@gmail.com"
-export EMAIL_PASSWORD="your_app_password"
-export EMAIL_RECIPIENT="recipient@gmail.com"
+export EMAIL_SENDER="emailmu@gmail.com"
+export EMAIL_PASSWORD="app_password_16_karakter"
+export EMAIL_RECIPIENT="tujuan@gmail.com"
 
-# Run script
 python ppg_tracker.py
 ```
 
 ---
 
-## 🕐 Jadwal Pengecekan
+## 🔍 Cara Kerja Singkat
 
-Script akan otomatis berjalan di GitHub setiap hari pada:
-
-- **Pagi:** 07:00 WIB (00:00 UTC)
-- **Malam:** 19:00 WIB (12:00 UTC)
-
-⚠️ **Catatan:** GitHub Actions menggunakan timezone UTC. Jika jadwal tidak tepat, kita bisa adjust cron expression di `.github/workflows/ppg-tracker.yml`
-
----
-
-## 🔍 Monitoring & Debugging
-
-### Cek log eksekusi:
-1. Buka repository di GitHub
-2. Klik tab **Actions**
-3. Pilih workflow **"PPG Tracker - Check Schedule"**
-4. Lihat detail eksekusi terbaru
-5. Expand section untuk lihat output (success/error messages)
-
-### Troubleshooting:
-
-**❌ "Email/Password salah atau App Password belum di-setup"**
-- Pastikan App Password sudah di-generate dengan benar
-- Jangan pakai password Gmail biasa, harus App Password
-- Pastikan 2-Step Verification sudah diaktifkan
-
-**❌ "Tidak ada informasi ditemukan"**
-- CSS selectors mungkin tidak sesuai dengan struktur HTML
-- Buka DevTools lagi dan update selectors
-- Coba test dengan scrape manual dulu
-
-**❌ "SMTP Connection Error"**
-- Pastikan email yang di-set sudah benar
-- Cek apakah Gmail sudah allow "Less secure app access" (jarang tapi bisa jadi issue)
+1. Buka `news/type/all` pakai **Playwright** (browser headless, supaya
+   tidak diblokir sistem keamanan website — website ini memang melakukan
+   blokir terhadap request HTTP biasa/non-browser)
+2. Ambil semua judul+link berita, **filter** yang cocok keyword
+3. Untuk tiap berita yang cocok, buka halaman detailnya, cari link PDF
+   resminya (ada di tombol/link viewer PDF), download PDF-nya
+4. Ekstrak teks dari PDF, hitung hash isinya
+5. Bandingkan hash dengan `ppg_cache.json` dari pengecekan sebelumnya:
+   - Belum pernah ada → tandai **BARU**
+   - Sudah ada tapi hash beda (isi PDF diganti) → tandai **DIPERBARUI**
+   - Hash sama → diabaikan, tidak ada email
+6. Kalau ada yang BARU/DIPERBARUI → kirim email dengan PDF terlampir,
+   lalu update `ppg_cache.json`
 
 ---
 
-## 📝 Struktur File
+## 🆘 Troubleshooting
 
-```
-ppg-tracker/
-├── ppg_tracker.py              # Main script scraping & email
-├── requirements.txt            # Python dependencies
-├── ppg_cache.json              # Cache hasil scraping (di-generate otomatis)
-├── README.md                   # File ini
-└── .github/
-    └── workflows/
-        └── ppg-tracker.yml     # GitHub Actions workflow
+**Email tidak pernah terkirim padahal ada pengumuman baru di website**
+- Cek tab Actions → lihat log run terakhir, cari baris yang menyebutkan jumlah berita yang lolos filter
+- Mungkin keyword di `config.py` tidak cocok dengan judul aslinya → sesuaikan
+
+**Error `playwright not found` saat test lokal**
+```bash
+pip install playwright --break-system-packages
+playwright install chromium
 ```
 
----
+**SMTP Authentication Error**
+- Pastikan pakai App Password (16 karakter), bukan password Gmail biasa
+- Pastikan 2-Step Verification sudah aktif
 
-## 🎨 Customize Email Template
-
-Kalau mau ubah format email, edit fungsi `create_notification_html()` di `ppg_tracker.py`.
-
-Contoh: menambah logo, ubah warna, format text, dll.
-
----
-
-## 💡 Tips & Tricks
-
-1. **Test workflow tanpa menunggu schedule:**
-   - Buka GitHub → Actions → PPG Tracker workflow
-   - Klik "Run workflow" → trigger manual
-
-2. **Disable notifikasi jika tidak ada perubahan:**
-   - Sudah di-built in! Script hanya kirim email jika ada perubahan
-
-3. **Tambah lebih banyak info:**
-   - Ubah scraper untuk extract informasi lainnya (kontak, persyaratan, dll)
-
-4. **Kirim ke multiple email:**
-   - Modify `send_email()` function untuk loop through email list
+**Website berubah struktur HTML, parsing jadi gagal**
+- Jalankan `python ppg_tracker.py` lokal, lihat output debug-nya
+- Kemungkinan perlu update selector di `scrape_daftar_berita()` atau
+  `ekstrak_url_pdf_asli()` di `ppg_tracker.py`
 
 ---
 
-## 🆘 Butuh Bantuan?
+## 📝 Catatan Migrasi dari v1
 
-Jika ada error atau butuh customize lebih lanjut:
-1. Check GitHub Actions logs (Actions tab)
-2. Lihat error message di console output
-3. Verify kembali:
-   - URL website sudah benar
-   - CSS selectors cocok dengan struktur HTML
-   - GitHub Secrets sudah di-set dengan benar
+Versi sebelumnya punya beberapa masalah yang sudah diperbaiki di v2 ini:
 
----
-
-## 📄 Lisensi
-
-Bebas digunakan dan dimodifikasi sesuai kebutuhan.
-
-Semoga membantu! 🚀
+| Masalah di v1 | Perbaikan di v2 |
+|---|---|
+| Folder `.github/workflows/` tidak ada sama sekali | Sudah dibuat & divalidasi |
+| `requirements.txt` tidak include `playwright` | Sudah disinkronkan |
+| Semua berita (relevan atau tidak) dikirim ke email | Difilter keyword di `config.py` |
+| Tidak ada pemrosesan PDF sama sekali | PDF didownload, diekstrak, dilampirkan |
+| Deteksi "berubah" dibandingkan sebagai satu blok besar | Dibandingkan per-artikel via hash |

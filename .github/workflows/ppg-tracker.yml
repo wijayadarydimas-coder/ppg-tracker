@@ -1,0 +1,46 @@
+name: PPG Tracker - Cek Pengumuman Calon Guru
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # 07:00 WIB (00:00 UTC)
+    - cron: '0 12 * * *'  # 19:00 WIB (12:00 UTC)
+  workflow_dispatch: {}    # supaya bisa di-trigger manual dari tab Actions
+
+jobs:
+  cek-ppg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies Python
+        run: |
+          pip install --break-system-packages -r requirements.txt
+
+      - name: Install browser Chromium untuk Playwright
+        run: |
+          playwright install --with-deps chromium
+
+      - name: Jalankan PPG Tracker
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        run: python ppg_tracker.py
+
+      - name: Commit & push cache terbaru (kalau ada perubahan)
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          if [ -f ppg_cache.json ]; then
+            git add ppg_cache.json
+            git diff --cached --quiet || git commit -m "Update cache PPG - $(date +'%Y-%m-%d %H:%M:%S')"
+            git push || echo "Push gagal/tidak ada perubahan untuk di-push"
+          fi
