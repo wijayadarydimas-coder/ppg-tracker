@@ -1,0 +1,46 @@
+name: PPG Tracker - Check Schedule
+
+on:
+  # Schedule: setiap hari pukul 07:00 WIB (00:00 UTC) dan 19:00 WIB (12:00 UTC)
+  schedule:
+    - cron: '0 0 * * *'      # Pagi jam 07:00 WIB (00:00 UTC + 7 jam)
+    - cron: '0 12 * * *'     # Malam jam 19:00 WIB (12:00 UTC + 7 jam)
+  
+  # Biar bisa di-trigger manual dari GitHub UI
+  workflow_dispatch:
+
+jobs:
+  check-ppg:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+      
+      - name: 🔍 Run PPG Tracker
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        run: python ppg_tracker.py
+      
+      - name: 💾 Commit cache updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if [ -f ppg_cache.json ]; then
+            git add ppg_cache.json
+            git commit -m "Update PPG cache - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+            git push
+          fi
