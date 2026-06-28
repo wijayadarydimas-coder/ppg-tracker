@@ -8,7 +8,8 @@ from datetime import datetime
 import json
 
 # ============ KONFIGURASI ============
-PPG_WEBSITE_URL = "https://ppg.kemendikdasmen.go.id"  # Website PPG resmi
+PPG_WEBSITE_BASE = "https://ppg.kemendikdasmen.go.id"  # Website PPG resmi
+PPG_NEWS_URL = "https://ppg.kemendikdasmen.go.id/news/type/all"  # Halaman berita PPG
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")  # Email pengirim (dari GitHub Secrets)
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")  # Password/App Password
 EMAIL_RECIPIENT = os.getenv("EMAIL_RECIPIENT")  # Email penerima
@@ -27,7 +28,7 @@ def scrape_ppg_info():
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
-        response = requests.get(PPG_WEBSITE_URL, headers=headers, timeout=10)
+        response = requests.get(PPG_NEWS_URL, headers=headers, timeout=10)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -39,52 +40,76 @@ def scrape_ppg_info():
         
         info_data = {
             "timestamp": datetime.now().isoformat(),
-            "status": "unknown",
-            "jadwal": None,
-            "pengumuman": None,
-            "raw_html": soup.prettify()[:500]  # Simpan preview untuk debugging
+            "status": "success",
+            "news_items": [],
+            "total_news": 0
         }
         
-        # Extract informasi PPG dari berbagai sumber
-        jadwal_info = []
+        # ============ SCRAPE DAFTAR BERITA ============
+        # Cari semua item berita dari halaman /news/type/all
         
-        # 1. Ambil informasi dari section news/pengumuman
-        news_section = soup.find('div', class_='news d-flex flex-column')
-        if news_section:
-            news_text = news_section.get_text(strip=True)
-            jadwal_info.append(f"📰 Berita: {news_text[:150]}")
+        news_items = []
         
-        # 2. Ambil semua h2 yang berisi info PPG (ini adalah judul-judul penting)
-        for h2 in soup.find_all('h2'):
-            h2_text = h2.get_text(strip=True)
-            if any(keyword in h2_text.lower() for keyword in ['ppg', 'seleksi', 'administrasi', 'calon', 'guru']):
-                jadwal_info.append(f"📌 {h2_text}")
+        # Strategy 1: Cari element dengan berbagai kemungkinan class
+        news_selectors = [
+            'div.news-item',
+            'article.news',
+            'div.blog-item',
+            'li.news',
+            'a[href*="/news/"]',
+            'div[class*="news"]',
+            'div[class*="article"]'
+        ]
         
-        # 3. Ambil dari span yang berisi pengumuman penting
-        for span in soup.find_all('span'):
-            span_text = span.get_text(strip=True)
-            if any(keyword in span_text.lower() for keyword in ['ppg', 'seleksi', 'tahun 2026', 'pendaftaran']):
-                if len(span_text) > 15:  # Hindari span kosong
-                    jadwal_info.append(f"✓ {span_text}")
+        for selector in news_selectors:
+            try:
+                found_items = soup.select(selector)
+                if found_items and len(found_items) > 2:
+                    news_items = found_items
+                    break
+            except:
+                pass
         
-        # 4. Ambil dari links yang berisi jadwal/konsultasi
-        for link in soup.find_all('a', href=True):
-            link_text = link.get_text(strip=True)
-            if any(keyword in link_text.lower() for keyword in ['jadwal', 'konsultasi', 'seleksi']):
-                jadwal_info.append(f"🔗 {link_text}")
+        # Extract informasi dari setiap berita
+        for item in news_items[:15]:  # Ambil max 15 berita terbaru
+            try:
+                # Jika item adalah link
+                if item.name == 'a' and item.get('href'):
+                    title = item.get_text(strip=True)
+                    url = item.get('href', '')
+                    if url.startswith('/'):
+                        url = PPG_WEBSITE_BASE + url
+                    
+                    if title and len(title) > 5:
+                        info_data["news_items"].append({
+                            "title": title[:150],
+                            "url": url
+                        })
+                else:
+                    # Jika item adalah container, cari link di dalamnya
+                    link = item.find('a', href=True)
+                    if link:
+                        title = link.get_text(strip=True)
+                        url = link.get('href', '')
+                        if url.startswith('/'):
+                            url = PPG_WEBSITE_BASE + url
+                        
+                        if title and len(title) > 5:
+                            info_data["news_items"].append({
+                                "title": title[:150],
+                                "url": url
+                            })
+            except:
+                pass
         
-        # Gabungkan semua informasi
-        if jadwal_info:
-            info_data["jadwal"] = "\n".join(jadwal_info)[:500]
-        else:
-            # Fallback: ambil text dari body
-            body_text = soup.get_text()[:300]
-            info_data["jadwal"] = body_text
+        info_data["total_news"] = len(info_data["news_items"])
         
-        # Jika tidak ketemu, ambil semua text dari body (debugging)
-        if not info_data["jadwal"]:
-            body_text = soup.get_text()[:500]
-            info_data["jadwal"] = body_text
+        # Format untuk cache dan display
+        info_data["jadwal"] = json.dumps(info_data["news_items"], ensure_ascii=False, indent=2)
+        
+        if not info_data["news_items"]:
+            info_data["status"] = "warning"
+            info_data["jadwal"] = "Tidak ada berita terdeteksi dari halaman /news"
         
         return info_data
         
@@ -92,7 +117,10 @@ def scrape_ppg_info():
         return {
             "timestamp": datetime.now().isoformat(),
             "status": "error",
-            "error": str(e)
+            "error": str(e),
+            "news_items": [],
+            "total_news": 0,
+            "jadwal": f"Error: {str(e)}"
         }
 
 # ============ FUNGSI DETEKSI PERUBAHAN ============
@@ -178,29 +206,63 @@ def create_notification_html(info_data):
         </html>
         """
     else:
+        # Build list of news items
+        news_html = ""
+        try:
+            news_items = json.loads(info_data.get('jadwal', '[]'))
+            if isinstance(news_items, list):
+                for idx, item in enumerate(news_items[:10], 1):
+                    title = item.get('title', 'No title')
+                    url = item.get('url', '')
+                    
+                    if url:
+                        link_html = f'<a href="{url}" style="color: #0066cc; text-decoration: none;">{title}</a>'
+                    else:
+                        link_html = title
+                    
+                    news_html += f"""
+                    <div style="background-color: #f9f9f9; padding: 12px; margin: 8px 0; border-left: 3px solid #0066cc; border-radius: 3px;">
+                        <strong style="color: #333;">{idx}. {link_html}</strong>
+                    </div>
+                    """
+        except:
+            news_html = f"""
+            <div style="background-color: #f9f9f9; padding: 12px; margin: 8px 0; border-radius: 3px;">
+                <p>{info_data.get('jadwal', 'Tidak ada informasi')}</p>
+            </div>
+            """
+        
+        total_news = info_data.get('total_news', 0)
+        
         html = f"""
         <html>
         <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
-            <div style="background-color: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 10px 0;">
-                <h2 style="margin: 0; color: #155724;">✅ Update Informasi PPG</h2>
-                <p style="margin: 10px 0; color: #155724;">
-                    Ada perubahan informasi jadwal pembukaan PPG!
+            <div style="background-color: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 10px 0; border-radius: 5px;">
+                <h2 style="margin: 0; color: #155724;">✅ Update Pengumuman PPG</h2>
+                <p style="margin: 5px 0; color: #155724;">
+                    Ada perubahan pengumuman di halaman berita PPG!
+                </p>
+                <p style="margin: 5px 0; color: #155724; font-size: 14px;">
+                    📰 Total berita terdeteksi: <strong>{total_news}</strong>
                 </p>
             </div>
             
             <div style="background-color: white; padding: 15px; margin: 10px 0; border-radius: 5px;">
                 <h3 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
-                    📋 Informasi Terbaru
+                    📋 Berita Terbaru
                 </h3>
-                <p style="color: #555; line-height: 1.6;">
-                    {info_data.get('jadwal', 'Tidak ada informasi')}
-                </p>
+                {news_html}
             </div>
             
-            <div style="background-color: #f9f9f9; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 12px; color: #666;">
-                <p>
-                    <strong>Waktu Pengecekan:</strong> {info_data.get('timestamp', '')}<br>
-                    <strong>Website:</strong> <a href="{PPG_WEBSITE_URL}">{PPG_WEBSITE_URL}</a>
+            <div style="background-color: #f9f9f9; padding: 12px; margin: 10px 0; border-radius: 5px; font-size: 12px; color: #666;">
+                <p style="margin: 5px 0;">
+                    <strong>🌐 Website:</strong> <a href="{PPG_NEWS_URL}" style="color: #0066cc; text-decoration: none;">{PPG_NEWS_URL}</a>
+                </p>
+                <p style="margin: 5px 0;">
+                    <strong>⏰ Waktu Pengecekan:</strong> {info_data.get('timestamp', '')}
+                </p>
+                <p style="margin: 5px 0; color: #999;">
+                    Bot ini melakukan pengecekan otomatis setiap hari pukul 07:00 WIB dan 19:00 WIB
                 </p>
             </div>
         </body>

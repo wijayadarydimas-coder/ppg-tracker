@@ -8,26 +8,15 @@ Dari test yang kamu jalankan, struktur website PPG **sudah identified** dan scri
 
 ## 📊 Apa yang Akan Di-Track
 
-Script akan otomatis monitor dan kirim notifikasi jika ada perubahan di:
+Script akan otomatis monitor dan kirim notifikasi jika ada perubahan di halaman pengumuman/berita:
 
-### 1. **Pengumuman Utama**
-✅ News section dengan pengumuman terbaru PPG
+**Tracking dari:** `https://ppg.kemendikdasmen.go.id/news/type/all`
 
-### 2. **Judul-Judul Penting (H2)**
-✅ PPG bagi Calon Guru (Prajabatan)
-✅ PPG bagi Guru Tertentu (Dalam Jabatan)
-✅ Seleksi Administrasi PPG Bagi Guru Tertentu Tahun 2026
-✅ Dan informasi terbaru lainnya
-
-### 3. **Informasi Terstruktur**
-✅ Seleksi Pendidikan Profesi Guru (PPG) bagi Calon Guru Tahun 2026
-✅ Pelaksanaan PPG bagi Guru Tertentu Tahun 2026 Tahap 2
-✅ Info lainnya
-
-### 4. **Link Penting**
-✅ Jadwal Konsultasi Daring
-✅ Link ke halaman seleksi
-✅ Dan link penting lainnya
+### Data yang dikumpulkan:
+✅ **Judul berita/pengumuman PPG terbaru**
+✅ **Link ke detail setiap berita**  
+✅ **Total jumlah berita**
+✅ **Deteksi perubahan/penambahan berita baru**
 
 ---
 
@@ -104,24 +93,33 @@ Jika output bagus, langsung bisa deploy! 🚀
 
 ## 📧 Email Notifikasi Format
 
-Jika ada perubahan, email akan ke-send seperti ini:
+Jika ada perubahan, email akan ke-send dengan format rapi:
 
 ```
-Subject: 🔔 PPG Tracker - Ada Update Jadwal Pembukaan PPG!
+Subject: ✅ Update Pengumuman PPG
 
-Assalamu'alaikum,
+✅ UPDATE PENGUMUMAN PPG
+Ada perubahan pengumuman di halaman berita PPG!
+📰 Total berita terdeteksi: 12
 
-Ada update informasi jadwal pembukaan PPG!
+---
 
-Informasi terbaru:
-📰 Berita: [Pengumuman terbaru]
-📌 [Judul-judul penting]
-✓ [Informasi detail]
-🔗 [Link penting]
+📋 BERITA TERBARU
 
-Silahkan cek website: https://ppg.kemendikdasmen.go.id
+1. [Judul Berita 1]
+   Link: https://ppg.kemendikdasmen.go.id/news/...
 
-Waktu pengecekan: [Timestamp]
+2. [Judul Berita 2]
+   Link: https://ppg.kemendikdasmen.go.id/news/...
+
+3. [Judul Berita 3]
+   ...dst
+
+---
+
+Website: https://ppg.kemendikdasmen.go.id/news/type/all
+Waktu Pengecekan: [Timestamp]
+Bot pengecekan: Otomatis setiap hari jam 07:00 & 19:00 WIB
 ```
 
 ---
