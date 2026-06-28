@@ -26,6 +26,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import smtplib
 import urllib.request
+import urllib.parse
 
 from bs4 import BeautifulSoup
 
@@ -234,11 +235,31 @@ def debug_print_semua_link(html, maksimal=20):
             print(f"      - {h}")
 
 
+def rapikan_url(url):
+    """
+    URL PDF asli dari website PPG sering mengandung SPASI MENTAH dan
+    karakter khusus seperti '[' ']' yang belum di-encode (contoh nama
+    file: "0240 [SHARED] Pengumuman ....pdf"). Python's urllib menolak
+    URL semacam itu ("URL can't contain control characters").
+
+    Fungsi ini meng-encode ulang URL dengan benar TANPA merusak bagian
+    skema/domain/parameter (':// ' , '?', '=' tetap apa adanya), supaya
+    hasilnya valid untuk di-download.
+    """
+    bagian = urllib.parse.urlsplit(url)
+    path_aman = urllib.parse.quote(bagian.path, safe="/")
+    query_aman = urllib.parse.quote(bagian.query, safe="=&")
+    return urllib.parse.urlunsplit(
+        (bagian.scheme, bagian.netloc, path_aman, query_aman, bagian.fragment)
+    )
+
+
 def download_pdf(url_pdf, simpan_ke):
     """Download file PDF dari url_pdf, simpan ke path simpan_ke."""
     os.makedirs(os.path.dirname(simpan_ke), exist_ok=True)
+    url_pdf_aman = rapikan_url(url_pdf)
     req = urllib.request.Request(
-        url_pdf,
+        url_pdf_aman,
         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
     )
     with urllib.request.urlopen(req, timeout=30) as response:
