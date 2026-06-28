@@ -50,8 +50,17 @@ import config
 # ============================================================
 # 1. SCRAPE LIST BERITA (PAKAI PLAYWRIGHT)
 # ============================================================
-def ambil_html_dengan_playwright(url, tunggu_detik=3):
-    """Buka satu URL dengan browser headless dan kembalikan HTML-nya."""
+def ambil_html_dengan_playwright(url, tunggu_detik=3, cari_selector=None):
+    """
+    Buka satu URL dengan browser headless dan kembalikan HTML-nya.
+
+    Kalau cari_selector diisi (contoh: 'a[href*="viewer.html"]'), Playwright
+    akan menunggu sampai elemen itu BENAR-BENAR muncul di halaman (maksimal
+    10 detik) sebelum mengambil HTML-nya. Ini lebih reliable dibanding cuma
+    delay statis, karena javascript di tiap halaman bisa beda-beda lamanya.
+    Kalau elemen tidak ditemukan dalam waktu itu, tetap lanjut ambil HTML
+    apa adanya (supaya tidak macet selamanya).
+    """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -59,6 +68,13 @@ def ambil_html_dengan_playwright(url, tunggu_detik=3):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         })
         page.goto(url, timeout=30000, wait_until="domcontentloaded")
+
+        if cari_selector:
+            try:
+                page.wait_for_selector(cari_selector, timeout=10000)
+            except Exception:
+                print(f"    [INFO] Selector '{cari_selector}' tidak muncul dalam 10s, lanjut pakai delay biasa.")
+
         page.wait_for_timeout(tunggu_detik * 1000)
         html = page.content()
         browser.close()
@@ -163,14 +179,59 @@ def ekstrak_url_pdf_asli(html):
       https://cdn.appgtk.id/.../pdfreader/web/viewer.html?file=https://cdn.appgtk.id/.../namafile.pdf
     Fungsi ini mengembalikan URL PDF ASLI (setelah ?file=...), bukan
     URL viewer-nya, supaya bisa langsung di-download.
+
+    Catatan: link aslinya kadang berisi SPASI MENTAH yang belum di-encode
+    (contoh: ".../2026/0240 [SHARED] Pengumuman ....pdf"), jadi parsing-nya
+    dibuat lapis-lapis (anchor tag dulu, fallback regex ke seluruh HTML)
+    supaya tetap kebaca walau formatnya agak berantakan.
     """
     soup = BeautifulSoup(html, "html.parser")
+
+    # Lapis 1: cari di <a href="...">
     for a_tag in soup.find_all("a", href=True):
         href = a_tag["href"]
         if "pdfreader/web/viewer.html" in href and "file=" in href:
-            url_pdf = href.split("file=", 1)[1]
-            return url_pdf
+            url_pdf = href.split("file=", 1)[1].strip()
+            if url_pdf:
+                return url_pdf
+
+    # Lapis 2: fallback - cari pola "viewer.html?file=....pdf" langsung di
+    # raw HTML pakai regex (jaga-jaga kalau link-nya dirender beda, misal
+    # lewat JS attribute lain seperti data-href, onclick, dll).
+    # PENTING: nama file PDF asli sering mengandung SPASI MENTAH
+    # (contoh: ".../0240 [SHARED] Pengumuman ....pdf"), jadi regex ini
+    # SENGAJA mengizinkan spasi di dalam URL, cuma berhenti di quote,
+    # kurung sudut HTML, atau baris baru.
+    pola = r"viewer\.html\?file=(https?://[^\"'<>\n\r]+?\.pdf)"
+    match = re.search(pola, html, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    # Lapis 3: fallback paling longgar - cari link .pdf apapun di halaman
+    for a_tag in soup.find_all("a", href=True):
+        href = a_tag["href"]
+        if href.lower().rstrip().endswith(".pdf") or ".pdf" in href.lower():
+            return href.strip()
+
     return None
+
+
+def debug_print_semua_link(html, maksimal=20):
+    """Dipanggil saat gagal nemu PDF, supaya log GitHub Actions kasih info
+    cukup untuk debugging tanpa perlu Bos cek manual ke website."""
+    soup = BeautifulSoup(html, "html.parser")
+    semua_href = [a["href"] for a in soup.find_all("a", href=True)]
+    print(f"    [DEBUG] Total link ditemukan di halaman ini: {len(semua_href)}")
+    relevan = [h for h in semua_href if "pdf" in h.lower() or "viewer" in h.lower() or "cdn.appgtk" in h.lower()]
+    if relevan:
+        print(f"    [DEBUG] Link yang mengandung 'pdf'/'viewer'/'cdn.appgtk' ({len(relevan)}):")
+        for h in relevan[:maksimal]:
+            print(f"      - {h}")
+    else:
+        print("    [DEBUG] Tidak ada link yang mengandung 'pdf'/'viewer'/'cdn.appgtk' sama sekali.")
+        print(f"    [DEBUG] Contoh {min(maksimal, len(semua_href))} link pertama di halaman:")
+        for h in semua_href[:maksimal]:
+            print(f"      - {h}")
 
 
 def download_pdf(url_pdf, simpan_ke):
@@ -208,11 +269,14 @@ def proses_satu_artikel(berita):
     Return dict berisi semua info, atau None kalau gagal/gak ada PDF.
     """
     print(f"  Membuka artikel: {berita['judul'][:70]}...")
-    html = ambil_html_dengan_playwright(berita["url"], tunggu_detik=2)
+    html = ambil_html_dengan_playwright(
+        berita["url"], tunggu_detik=4, cari_selector='a[href*="viewer.html"], a[href$=".pdf"]'
+    )
 
     url_pdf = ekstrak_url_pdf_asli(html)
     if not url_pdf:
-        print("    Tidak ada PDF di artikel ini, dilewati.")
+        print("    Tidak ada PDF di artikel ini (atau gagal terdeteksi), dilewati.")
+        debug_print_semua_link(html)
         return None
 
     nama_file = os.path.basename(url_pdf.split("?")[0])
